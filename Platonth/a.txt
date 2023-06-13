@@ -1,0 +1,1045 @@
+/* main */
+
+
+
+//import {vg.vec3} from "./vg.vec3.js";
+//import * as vg from "./rnd/render.js";
+import "./rnd/render.js";
+import {shader} from "./rnd/res/shader.js";
+import {buffer, ubo_buffer, vertex_buffer, index_buffer} from "./rnd/res/buffer.js";
+import {prim, primTetrahedron} from "./rnd/res/prim.js";
+
+export function myOnLoad() {
+  const trg_v =
+  [
+    vg.vertex(vg.vec3(0, 0, 0), vg.vec3(0, 0, 1)),
+    vg.vertex(vg.vec3(1, 0, 0), vg.vec3(0, 0, 1)),
+    vg.vertex(vg.vec3(0, 1, 0), vg.vec3(0, 0, 1)),
+    vg.vertex(vg.vec3(1, 1, 0), vg.vec3(0, 0, 1)),
+  ];
+  let p1 = vg.primCreate(trg_v, [0, 1, 2, 2, 1, 3]);
+  let p2 = primTetrahedron();
+  vg.cam.set(vg.vec3(2), vg.vec3(0), vg.vec3(0, 1, 0));
+  vg.renderFrame(() => {
+    
+    let txt = 'ms: ' + vg.input.mX + ":" + vg.input.mY + ":" + vg.input.mZ;
+    for (let b in vg.input.mButtons)
+      if (vg.input.mButtons[Number(b)])
+        txt += '[Mb' + b + "] ";
+    txt +=
+      "<br />Keys: " +
+      "<br />Shift: " + vg.input.shiftKey +
+      "<br />Alt: " + vg.input.altKey +
+      "<br />Control: " + vg.input.ctrlKey +
+      "<br />Keyboard: ";
+    for (let k in vg.input.keys)
+      if (vg.input.keys[k])
+        txt += '[' + k + "] ";
+    document.getElementById('input').innerHTML = txt;
+    
+    vg.input.responseñCamera();
+    
+    p2.transform.rotate(vg.timer.localDeltaTime * 47 * 5, vg.vec3(0.30, 0.47 + 0.8 * Math.sin(0.2 * vg.timer.localTime), 0.29));
+    p2.draw();
+  });
+}
+   
+
+function parse(code){
+    // state
+    var isInRegExp = false;
+    var isInString = false;
+    var terminator = null; // to hold the string terminator
+    var escape = false; // last char was an escape
+    var isInComment = false;
+
+    var separator;
+    
+
+    var c = code.split(""); // code
+
+    var o = []; // output
+    for(var i = 0; i < c.length; i++){
+        if(isInString) {  // handle string literal case
+             if(c[i] === terminator && escape === false){
+                  isInString = false;
+                  o.push(c[i]);
+             } else if (c[i] === "\\") { // escape
+                  escape = true;
+             } else {
+                  escape = false;
+                  o.push(c[i]); 
+             }
+        } else if(isInRegExp) { // regular expression case
+             if(c[i] === "/" && escape === false){
+                 isInRegExp = false;
+                 o.push(c[i]);
+             } else if (c[i] === "\\") {
+                 escape = true;
+             } else { 
+                escape = false;
+                o.push(c[i]);
+             }
+        } else if (isInComment) { // comment case
+              if(c[i] === "*" && c[i+1] === "/"){
+                  isInComment = false;
+                  i++;
+                  // Note - not pushing comments to output
+              }
+        } else {   // not in a literal
+              if(c[i] === "/" && c[i+1] === "/") { // single line comment
+                   while(c[i] !== "\n" && c[i] !== undefined){ //end or new line
+                       i++;
+                   }
+              } else if(c[i] === "/" && c[i+1] === "*"){ // start comment
+                    isInComment = true;
+                    o.push(" "); // add a space per spec
+                    i++; // don't catch /*/
+              } else if(c[i] === "/"){ // start regexp literal
+                    isInRegExp = true;
+                    o.push(c[i]);
+              } else if(c[i] === "'" || c[i] === '"'){ // string literal
+                    isInString = true;
+                    o.push(c[i]);
+                    separator = c[i];
+              } else { // plain ol' code
+                    o.push(c[i]);
+              }
+        }
+    }
+    return o.join("");
+}
+/*
+let fs = require("fs");
+let stdinBuffer = fs.readFileSync(0); // STDIN_FILENO = 0
+const lines = stdinBuffer.split("\n");
+const casesCount = parseInt(lines[0]);
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+/* render.js  */
+import {camera, mat4, vec3} from "../mth/camera.js";
+import {buffer, ubo_buffer, vertex_buffer, index_buffer} from "./res/buffer.js";
+import {vertex, prim} from "./res/prim.js";
+import {material} from "./res/material.js";
+import {shader} from "./res/shader.js";
+import {Timer} from "./timer.js";
+import {input} from "./input.js";
+//export {camera, mat4, vec3};
+
+export class render {
+  constructor(...args) {
+    // Export math & render classes
+    this.vec3 = vec3;
+    this.mat4 = mat4;
+    this.camera = camera;
+    this.vertex = vertex;
+    this.input = new input();
+    
+    // Buffers (frame & primitives)
+    this.frameData =
+    {
+      time: [1.0, 2.0, 3.0, 4.0],
+    };
+    this.frameBuf = ubo_buffer("frameBuffer", 4 * 4, 1);
+    this.frameBuf.update(this.frameData);
+    
+    this.primData =
+    {
+      MatrWVP: mat4(),
+      MatrInvWTrans: mat4(),
+      MatrW: mat4(),
+    };
+    this.primBuf = ubo_buffer("primBuffer", 3 * 4 * 16, 2);
+    this.primBuf.update(this.primData);
+    
+    // Render data
+    this.timer = new Timer();
+    this.cam = camera();
+    this.cam.setSize(gl.canvas.width, gl.canvas.height);
+    this.primitives = [];
+    this.shaders =
+    {
+      def: shader("default"),
+    };
+    
+    // Setup OpenGL
+    gl.clearColor(0.30, 0.47, 0.8, 1);
+    gl.enable(gl.DEPTH_TEST);
+  } // End of 'constructor' function
+
+  primCreate(...args) {
+    let pr = prim(...args);
+    this.primitives.push(pr);
+    return pr;
+  } // End of 'primCreate' function
+  
+  renderFrame(drawFunc) {
+    const draw = () => {
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      this.cam.setSize(gl.canvas.clientWidth, gl.canvas.clientHeight);
+      gl.canvas.width = gl.canvas.clientWidth;
+      gl.canvas.height = gl.canvas.clientHeight;
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      this.timer.response('fps');
+      
+      // Premare data
+      this.frameData.time =
+      [
+        this.timer.localTime,
+        this.timer.localDeltaTime,
+        this.timer.globalTime,
+        this.timer.globalDeltaTime
+      ];
+      this.frameBuf.update(this.frameData);
+      
+      if (typeof drawFunc == "function")
+        drawFunc();
+      else
+        this.primitives.forEach((pr) => pr.draw());
+      this.input.reset();
+      window.requestAnimationFrame(draw);
+    }
+    draw();
+  } // End of 'renderFrame' function
+
+} // End of 'render' class
+
+/////////////////////////////////////
+// Global initialization
+/////////////////////////////////////
+
+
+if (window.gl == undefined) {
+  let canvas = document.getElementById("myCan");
+  window.gl = canvas.getContext("webgl2");
+  //Object.defineProperty(window, 'gl', {
+  //  enumerable: true,
+  //  configurable: true,
+  //  get: function() {
+  //    if (this._gl == null || this._gl == undefined) {
+  //      this.canvas = document.getElementById("myCan");
+  //      this._gl = this.canvas.getContext("webgl2");
+  //    }
+  //    return this._gl;
+  //  },
+  //  set: function(val) {
+  //    this._gl = val;
+  //  }
+  //});
+}
+
+if (window.vg == undefined)
+{
+  window.vg = new render();
+  //Object.defineProperty(window, 'vg', {
+  //  enumerable: true,
+  //  configurable: true,
+  //  get: function() {
+  //    if (this._vg == null || this._gl == undefined) {
+  //      this.canvas = document.getElementById("myCan");
+  //      this._gl = this.canvas.getContext("webgl2");
+  //    }
+  //    return this._gl;
+  //  },
+  //  set: function(val) {
+  //    this._gl = val;
+  //  }
+  //});
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/* shader.js */
+let is = false;
+class _shader {
+  async _init(name) {
+    this.name = name;
+    this.id = null;
+    this.attrs = {};
+    this.uniforms = {};
+    this.uniformBlocks = {};
+    let shds =
+    [
+      {
+        id : null,
+        type : gl.VERTEX_SHADER,
+        name : "vert",
+      },
+      {
+        id : null,
+        type : gl.FRAGMENT_SHADER,
+        name : "frag",
+      },
+    ];
+    /// let promises = [];
+    // Shaders initialization
+    for (let i = 0; i < shds.length; i++) {
+      let s = shds[i];
+      let resonse = await fetch("bin/shaders/"+ name + "/"  + s.name + ".glsl" + "?" + Math.random());
+      let data = await resonse.text();
+      if (typeof data == "string" && data != "") {
+        s.id = gl.createShader(s.type);
+        gl.shaderSource(s.id, data);
+        gl.compileShader(s.id);
+        if (!gl.getShaderParameter(s.id, gl.COMPILE_STATUS)) {
+          let Buf = gl.getShaderInfoLog(s.id);
+          console.log("Shader fail:\n" + name + "::" + s.name + "\n" + Buf);
+        }
+      }
+    }
+    // Shader program create
+    this.id = gl.createProgram();
+    shds.forEach((s) => {
+      if (s.id != null)
+        gl.attachShader(this.id, s.id);
+    });
+    gl.linkProgram(this.id);
+    if (!gl.getProgramParameter(this.id, gl.LINK_STATUS)) {
+      const Buf = gl.getProgramInfoLog(this.id);
+      console.log("Shader Program fail:\n" + name + "::" + Buf);
+    }
+
+    shds.forEach((s) => {
+      if (s.id != null) {
+        // gl.detachShader(this.id, s.id);
+        // gl.deleteShader(s.id);
+      }
+    });
+    
+    // Fill shader attributes info
+    let countAttr = gl.getProgramParameter(this.id, gl.ACTIVE_ATTRIBUTES);
+    for (let i = 0; i < countAttr; i++) {
+      const info = gl.getActiveAttrib(this.id, i);
+      this.attrs[info.name] =
+      {
+        name : info.name,
+        type: info.type,
+        size: info.size,
+        loc: gl.getAttribLocation(this.id, info.name),
+      };
+    }
+    // Fill shader uniforms info
+    let countUniform = gl.getProgramParameter(this.id, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < countUniform; i++) {
+      const info = gl.getActiveUniform(this.id, i);
+      this.uniforms[info.name] =
+      {
+        name : info.name,
+        type: info.type,
+        size: info.size,
+        loc: gl.getUniformLocation(this.id, info.name)
+      };
+    }
+    // Fill shader uniform blocks info
+    let countUniformBlocks = gl.getProgramParameter(this.id, gl.ACTIVE_UNIFORM_BLOCKS);
+    for (let i = 0; i < countUniformBlocks; i++) {
+      const info = gl.getActiveUniformBlockName(this.id, i);
+      const idx = gl.getUniformBlockIndex(this.id, info);
+      this.uniformBlocks[info] =
+      {
+        name : info,
+        index: idx,
+        size: gl.getActiveUniformBlockParameter(this.id, idx, gl.UNIFORM_BLOCK_DATA_SIZE),
+        bind: gl.getActiveUniformBlockParameter(this.id, idx, gl.UNIFORM_BLOCK_BINDING),
+      };
+    }
+  } // End of '_init' function
+  constructor(name) {
+    this._init(name);
+  } // End of 'constructor' function
+  
+  apply() {
+    if (this.id != null)
+      gl.useProgram(this.id);
+  } // End of 'apply' function
+} // End of '_shader' class
+
+export function shader(name) {
+  return new _shader(name);
+} // End of 'shader' function
+
+
+
+
+
+
+/* buffer */
+class _buffer {
+  constructor(type, size) {
+    this.type = type;    // Buffer type (gl.***_BUFFER)
+    this.size = size;    // Buffer size in bytes
+    this.id = null;
+    if (size == 0 || type == undefined)
+      return;
+    this.id = gl.createBuffer();
+    gl.bindBuffer(type, this.id);
+    gl.bufferData(type, size, gl.STATIC_DRAW);
+  } // End of 'constructor' function
+  
+  update(data) {
+    if (this.id == null)
+      return;
+    let arr = [];
+    const doarray = (a) => {
+      if (typeof a == "object")
+      {
+        if (a.toArray != undefined)
+          arr = arr.concat(a.toArray());
+        else {
+          if (Array.isArray(a))
+            for (let i = 0; i < a.length; i++)
+              doarray(a[i]);
+          else
+            for (let prop in a)
+              doarray(a[prop]);
+        }
+      }
+      else if (typeof a == "number")
+        arr.push(a);
+    };
+    doarray(data);
+    gl.bindBuffer(this.type, this.id);
+    gl.bufferSubData(this.type, 0, new Float32Array(arr), 0);
+  }
+} // End of '_buffer' class
+
+export function buffer(...args) {
+  return new _buffer(...args);
+} // End of 'buffer' function
+
+class _ubo_buffer extends _buffer {
+  constructor(name, size, bindPoint) {
+    super(gl.UNIFORM_BUFFER, size);
+    this.name = name; // Buffer GPU binding point
+    this.bindPoint = bindPoint; // Buffer GPU binding point
+  } // End of 'constructor' function
+
+  apply(shd) {
+    if (shd == undefined || shd.id == undefined || shd.id == null || shd.uniformBlocks[this.name] == undefined)
+      return;
+    gl.uniformBlockBinding(shd.id, shd.uniformBlocks[this.name].index, this.bindPoint);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, this.bindPoint, this.id);
+  } // End of 'constructor' function
+} // End of '_ubo_buffer' class
+
+export function ubo_buffer(...args) {
+  return new _ubo_buffer(...args);
+} // End of 'ubo_buffer' function
+
+class _vertex_buffer extends _buffer {
+  constructor(vertexSizeInBytes, vArray) {
+    let n = 0;
+    if (typeof vArray == "number")
+      n = vArray;
+    else if (typeof vArray == "object")
+      n = vArray.length;
+    
+    super(gl.ARRAY_BUFFER, n * vertexSizeInBytes);
+    if (typeof vArray != "object")
+      return;
+    this.update(vArray);
+  } // End of 'constructor' function
+
+  apply() {
+    if (this.id == null)
+      return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.id);
+  } // End of 'constructor' function
+} // End of '_vertex_buffer' class
+
+export function vertex_buffer(...args) {
+  return new _vertex_buffer(...args);
+} // End of 'vertex_buffer' function
+
+class _index_buffer extends _buffer {
+  constructor(iArray) {
+    let n = 0;
+    if (typeof iArray == "number")
+      n = iArray;
+    else if (typeof iArray == "object")
+      n = iArray.length;
+    super(gl.ELEMENT_ARRAY_BUFFER, n * 4);
+    if (typeof iArray != "object")
+      return;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.id);
+    gl.bufferSubData(this.type, 0, new Uint32Array(iArray), 0);
+  } // End of 'constructor' function
+
+  apply() {
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.id);
+  } // End of 'constructor' function
+} // End of '_index_buffer' class
+
+export function index_buffer(...args) {
+  return new _index_buffer(...args);
+} // End of 'ubo_buffer' function
+
+
+
+
+
+
+
+
+
+/* prim */
+import {camera, mat4, vec3} from "../../mth/camera.js";
+import {shader} from "./shader.js";
+import {buffer, ubo_buffer, vertex_buffer, index_buffer} from "./buffer.js";
+import {material} from "./material.js";
+export {mat4, vec3, shader};
+
+class _vertex {
+  constructor(pos, norm) {
+    this.pos = vec3(pos);
+    this.norm = vec3(norm);
+  }
+} // End of 'vertex' class
+const vertex_size = 4 * 3 * 2;
+export function vertex(...args) {
+  return new _vertex(...args);
+} // End of 'vertex' function
+
+class _prim {
+  constructor(...args) {
+    this.vBuf = vertex_buffer(0);
+    this.iBuf = index_buffer(0);
+    this.va = null;
+    this.numElements = 0;
+    this.transform = mat4();
+    if (args.length == 1)
+      if (typeof args[0] == "number")
+        this.numElements = args[0];
+      else
+      {
+        this.vBuf = vertex_buffer(vertex_size, args[0]);
+        this.numElements = args[0].length;
+      }
+    else {
+      let [vArray, iArray] = args;
+      this.vBuf = vertex_buffer(vertex_size, vArray);
+      this.iBuf = index_buffer(iArray);
+      this.numElements = iArray.length;
+    }
+  } // End of 'constructor' function
+  
+  draw() {
+    if (vg.shaders.def.id == null)
+      return;
+    if (this.va == null && this.vBuf.id != null) {
+      // Prepare vertex array
+      this.vBuf.apply();
+      this.va = gl.createVertexArray();
+      gl.bindVertexArray(this.va);
+      if (vg.shaders.def.attrs["InPosition"]) {
+        gl.vertexAttribPointer(vg.shaders.def.attrs["InPosition"].loc, 3, gl.FLOAT, false, 24, 0);
+        gl.enableVertexAttribArray(0);
+      }
+      if (vg.shaders.def.attrs["InNormal"]) {
+        gl.vertexAttribPointer(vg.shaders.def.attrs["InNormal"].loc, 3, gl.FLOAT, false, 24, 12);
+        gl.enableVertexAttribArray(1);
+      }
+    }
+    
+    /// debugger;
+    vg.shaders.def.apply();
+    vg.frameBuf.apply(vg.shaders.def);
+    vg.primData.MatrWVP = mat4(this.transform).mul(vg.cam.matrVP);
+    vg.primData.MatrW = mat4(this.transform);
+    vg.primData.MatrInvWTrans = mat4(this.transform).inverse().transpose();
+    vg.primBuf.update(vg.primData);
+    vg.primBuf.apply(vg.shaders.def);
+    
+    if (this.va != null)
+      gl.bindVertexArray(this.va);
+    if (this.iBuf.id == null)
+      gl.drawArrays(gl.TRIANGLES, 0, this.numElements);
+    else {
+      this.iBuf.apply();
+      gl.drawElements(gl.TRIANGLES, this.numElements, gl.UNSIGNED_INT, 0);
+    }
+  } // End of 'draw' function
+
+  apply() {
+  } // End of 'apply' function
+} // End of 'material' class
+
+export function prim(...args) {
+  return new _prim(...args);
+} // End of 'prim' function
+
+export function primTetrahedron() {
+  let a = 1, sqrt3 = Math.sqrt(3.0), h = sqrt3 / 2.0;
+  let
+    A = vec3(-a * sqrt3 / 6, 0, -a / 2),
+    C = vec3(-a * sqrt3 / 6, 0,  a / 2),
+    B = vec3( a * sqrt3 / 3, 0,      0),
+    S = vec3(             0, h,      0);
+  let getN = (P0, P1, P2) => {
+    return vec3(P1).sub(P0).cross(vec3(P2).sub(P0)).normalize();
+  };
+  let
+    N1 = getN(A, B, S),
+    N2 = getN(B, C, S),
+    N3 = getN(C, A, S),
+    N0 = getN(A, C, B);
+  return vg.primCreate([
+    vg.vertex(A, N1), vg.vertex(B, N1), vg.vertex(S, N1),
+    vg.vertex(B, N2), vg.vertex(C, N2), vg.vertex(S, N2),
+    vg.vertex(C, N3), vg.vertex(A, N3), vg.vertex(S, N3),
+    vg.vertex(A, N0), vg.vertex(C, N0), vg.vertex(B, N0)
+  ]);
+} // End of 'primTetrahedron' function
+
+
+
+
+
+
+/* material */
+
+import {mat4, vec3} from "../../mth/camera.js";
+import {shader} from "./shader.js";
+export {mat4, vec3, shader};
+
+class _material {
+  constructor(shaderName, shadeCoeffs) {
+    this.shader = shader(shaderName);
+    this.shadeCoeffs = shadeCoeffs;
+  } // End of 'constructor' function
+  apply() {
+    if (this.shader != null)
+      this.shader.apply();
+  } // End of 'apply' function
+} // End of 'material' class
+
+export function material(...args) {
+  return new _material(...args);
+} // End of 'material' function
+
+
+
+/* input */
+
+import {camera, mat4, vec3} from "../mth/camera.js";
+
+const D2R = degrees => degrees * Math.PI / 180;
+const R2D = radians => radians * 180 / Math.PI;
+
+export class input {
+  constructor() {
+    gl.canvas.addEventListener('click', (e) => this.onClick(e));
+    gl.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+    gl.canvas.addEventListener('mousewheel', (e) => this.onMouseWheel(e));
+    gl.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+    gl.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+    gl.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    
+    
+    window.addEventListener('keydown', (e) => this.onKeyDown(e));
+    window.addEventListener('keyup', (e) => this.onKeyUp(e));
+    
+    this.mX = 0;
+    this.mY = 0;
+    this.mZ = 0;
+    this.mDx = 0;
+    this.mDy = 0;
+    this.mDz = 0;
+    this.mButtons = [0, 0, 0, 0, 0];
+    this.mButtonsOld = [0, 0, 0, 0, 0];
+    this.mButtonsClick = [0, 0, 0, 0, 0];
+    
+    this.keys = [];
+    this.keysOld = [];
+    this.keysClick = [];
+    [
+      "Enter", "Backspace",
+      "Delete", "Space", "Tab", "Escape", "ArrowLeft", "ArrowUp", "ArrowRight",
+      "ArrowDown", "Shift", "Control", "Alt", "ShiftLeft", "ShiftRight", "ControlLeft",
+      "ControlRight", "PageUp", "PageDown", "End", "Home",
+      "Digit0", "Digit1",
+      "KeyA",
+      "Numpad0", "NumpadMultiply",
+      "F1",
+    ].forEach(key => {
+      this.keys[key] = 0;
+      this.keysOld[key] = 0;
+      this.keysClick[key] = 0;
+    });
+
+    this.shiftKey = false;
+    this.altKey = false;
+    this.ctrlKey = false;
+
+    this.isFirst = true;
+  } // End of 'constructor' function
+
+  /// Mouse handle functions
+
+  onClick(e) {
+  } // End of 'onClick' function
+
+  onMouseMove(e) {
+    // let
+    //   x = e.clientX - (gl.canvas.offsetLeft + gl.canvas.clientLeft),
+    //   y = e.clientY - (gl.canvas.offsetTop + gl.canvas.clientTop);
+    // this.mDx = x - this.mX;
+    // this.mDy = y - this.mY;
+    // this.mX = x;
+    // this.mY = y;
+    let
+      dx = e.movementX,
+      dy = e.movementY;
+    this.mDx = dx;
+    this.mDy = dy;
+    this.mX += dx;
+    this.mY += dy;
+  } // End of 'onMouseMove' function
+
+  onMouseWheel(e) {
+    e.preventDefault();
+    this.mZ += (this.mDz = e.wheelDelta / 120);
+  } // End of 'onMouseWheel' function
+
+  onMouseDown(e) {
+    e.preventDefault();
+    this.mButtonsOld[e.button] = this.mButtons[e.button];
+    this.mButtons[e.button] = 1;
+    this.mButtonsClick[e.button] = !this.mButtonsOld[e.button] && this.mButtons[e.button];
+    
+    this.shiftKey = e.shiftKey;
+    this.altKey = e.altKey;
+    this.ctrlKey = e.ctrlKey;
+  } // End of 'onMouseMove' function
+  
+  onMouseUp(e) {
+    e.preventDefault();
+    this.mButtonsOld[e.button] = this.mButtons[e.button];
+    this.mButtons[e.button] = 0;
+    this.mButtonsClick[e.button] = 0;
+
+    this.shiftKey = e.shiftKey;
+    this.altKey = e.altKey;
+    this.ctrlKey = e.ctrlKey;
+  } // End of 'onMouseMove' function
+
+  /// Keyboard handle
+  onKeyDown(e) {
+    this.keysOld[e.code] = this.keys[e.code];
+    this.keys[e.code] = 1;
+    this.keysClick[e.code] = !this.keysOld[e.code] && this.keys[e.code];
+    
+    this.shiftKey = e.shiftKey;
+    this.altKey = e.altKey;
+    this.ctrlKey = e.ctrlKey;
+  } // End of 'onKeyDown' function
+  
+  onKeyUp(e) {
+    this.keysOld[e.code] = this.keys[e.code];
+    this.keys[e.code] = 0;
+    this.keysClick[e.code] = 0;
+
+    this.shiftKey = e.shiftKey;
+    this.altKey = e.altKey;
+    this.ctrlKey = e.ctrlKey;
+  } // End of 'onKeyUp' function
+  
+  /// Camera movement handling
+  reset() {
+    this.mDx = 0;
+    this.mDy = 0;
+    this.mDz = 0;
+    this.mButtonsClick.forEach(k => this.mButtonsClick[k] = 0);
+    this.keysClick.forEach(k => this.keysClick[k] = 0);
+
+    this.shiftKey = this.keys["ShiftLeft"] || this.keys["ShiftRight"];
+    this.altKey = this.keys["AltLeft"] || this.keys["AltRight"];
+    this.ctrlKey = this.keys["ControlLeft"] || this.keys["ControlRight"];
+  } // End of reset' function
+
+  responseñCamera() {
+    if (this.ctrlKey) {
+      // Handle camera orientation
+      let
+        Dist = vec3(vg.cam.at).sub(vg.cam.loc).len(),
+        cosT = (vg.cam.loc.y - vg.cam.at.y) / Dist,
+        sinT = Math.sqrt(1 - cosT * cosT),
+        plen = Dist * sinT,
+        cosP = (vg.cam.loc.z - vg.cam.at.z) / plen,
+        sinP = (vg.cam.loc.x - vg.cam.at.x) / plen,
+        azimuth = R2D(Math.atan2(sinP, cosP)),
+        elevator = R2D(Math.atan2(sinT, cosT));
+
+      azimuth += vg.timer.globalDeltaTime * 3 *
+        (-30 * this.mButtons[0] * this.mDx +
+         47 * (this.keys["ArrowLeft"] - this.keys["ArrowRight"]));
+
+      elevator += vg.timer.globalDeltaTime * 2 *
+        (-30 * this.mButtons[0] * this.mDy +
+         47 * (this.keys["ArrowUp"] - this.keys["ArrowDown"]));
+      if (elevator < 0.08)
+        elevator = 0.08;
+      else if (elevator > 178.90)
+        elevator = 178.90;
+
+      Dist += vg.timer.globalDeltaTime * (1 + this.shiftKey * 28) *
+        (2 * this.mDz +
+         8 * (this.keys["PageUp"] - this.keys["PageDown"]));
+      if (Dist < 0.1)
+        Dist = 0.1;
+
+      /* Handle camera position */
+      if (this.mButtons[2]) {
+        let Wp = vg.cam.projSize;
+        let Hp = vg.cam.projSize;
+        if (vg.cam.frameW > vg.cam.frameH)
+          Wp *= vg.cam.frameW / vg.cam.frameH;
+        else
+          Hp *= vg.cam.frameH / vg.cam.frameW;
+        let sx = -this.mDx * Wp / vg.cam.frameW * Dist / vg.cam.projDist;
+        let sy = this.mDy * Hp / vg.cam.frameH * Dist / vg.cam.projDist;
+
+        let dv = vg.cam.right.mul(sx).add(vg.cam.up.mul(sy));
+        vg.cam.at = vg.cam.at.add(dv);
+        vg.cam.loc = vg.cam.loc.add(dv);
+      }
+
+      /* Setup result camera */
+      vg.cam.set(mat4().setRotate(elevator, vec3(1, 0, 0)).
+                        rotate(azimuth, vec3(0, 1, 0)).
+                        translate(vg.cam.at).transformPoint(vec3(0, Dist, 0)),
+                 vg.cam.at,
+                 vec3(0, 1, 0));
+    }
+  } // End of 'responseñCamera' function
+} // End of 'input' class
+
+/*
+<div id="output"></div>
+
+var output = document.getElementById('output'),
+    pressed = {},
+    keyDownCount = 0,
+    keyDownTime = 0;
+
+window.onkeydown = function(e) {
+    if ( pressed[e.code] ) return;
+    pressed[e.code] = true;
+    if (!keyDownCount) keyDownTime = e.timeStamp;
+    keyDownCount++;
+};
+    
+window.onkeyup = function(e) {
+    if ( !pressed[e.code] ) return;
+    pressed[e.code] = false;
+    keyDownCount--;
+    if (keyDownCount) return;
+    var duration = ( e.timeStamp - keyDownTime ) / 1000;
+    var today = new Date();
+    var date = today.getDate()+'-'+(today.getMonth()+1)+'-'+today.getFullYear();
+    var time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+    var dateTime = (date+' '+time).replace(/\b\d\b/g, "0$&"); 
+    output.innerHTML += dateTime + ' - Key(s) pressed for ' + duration + ' seconds</p>';
+}
+
+
+
+
+
+
+
+const output = document.getElementById('output');
+let pressed = {};
+
+window.onkeydown = function (e) {
+  if (Object.values(pressed).length <= 1) {
+    pressed.start = new Date();
+  }
+  pressed[e.code] = e.timeStamp;
+};
+
+window.onkeyup = function (e) {
+  delete pressed[e.code];
+  const { start, ...rest } = pressed;
+  if (rest.length <= 1) {
+    const currentTime = new Date();
+    const duration = (currentTime - start) / 1000;
+    const date = `${currentTime.getDate()}-${currentTime.getMonth() + 1}-${currentTime.getFullYear()}`;
+    const time = `${currentTime.getHours()}:${currentTime.getMinutes() + 1}:${currentTime.getSeconds()}`;
+    output.innerHTML += `${date} ${time} - Key(s) pressed for ${duration} seconds</p>`;
+    delete pressed.start;
+  }
+};
+
+
+
+
+
+
+
+
+
+
+onst output = document.getElementById("output");
+
+function log(text) {
+  const p = document.createElement("p");
+  p.append(text);
+  output.append(p);
+}
+
+const pressed = {
+  keys: new Set(),
+  timestamp: null,
+  get isEmpty() { return !this.keys.size },
+  add(key) {
+    // save the current timestamp when adding the first key
+    if (this.isEmpty) this.timestamp = Date.now();
+    return this.keys.add(key);
+  },
+  delete(key) {
+    const wasPresent = this.keys.delete(key);
+    // trigger onRelease when deleting the last key
+    if (wasPresent && this.isEmpty) this.onRelease();
+    return wasPresent;
+  },
+  onRelease() {
+    const now = new Date();
+    const duration = now.getTime() - this.timestamp;
+    log(`${now.toLocaleString()} - Key(s) pressed for ${duration}ms`);
+  }
+};
+
+document.addEventListener("keydown", ({ code }) => pressed.add(code));
+document.addEventListener("keyup", ({ code }) => pressed.delete(code));
+
+
+
+
+
+
+
+
+MOUSE:
+
+// Avoid the context menu popup
+window.addEventListener("contextmenu", function(e) {
+  e.preventDefault();
+}, false);
+
+// Listen for mouseup
+window.addEventListener("mouseup", function(e) {
+  switch (e.button) {
+    case 0: // Primary button ("left")
+      speedUp();
+      break;
+    case 2: // Secondary button ("right")
+      speedDown();
+      break;
+  }
+}, false);
+
+// Current speed
+var speed = 0;
+showSpeed();
+
+// Speed functions
+function speedUp() {
+  ++speed;
+  showSpeed();
+}
+
+function speedDown() {
+  --speed;
+  showSpeed();
+}
+
+function showSpeed() {
+  document.getElementById("speed").innerHTML = speed;
+}
+
+
+// From https://stackoverflow.com/questions/826782/how-to-disable-text-selection-highlighting-using-css
+body {
+  -webkit-touch-callout: none; /* iOS Safari * /
+    -webkit-user-select: none; /* Chrome/Safari/Opera * /
+     -khtml-user-select: none; /* Konqueror * /
+       -moz-user-select: none; /* Firefox * /
+        -ms-user-select: none; /* Internet Explorer/Edge * /
+            user-select: none; /* Non-prefixed version, currently
+                                  not supported by any browser * /
+}
+
+
+
+
+
+
+// Avoid the context menu popup
+window.addEventListener("contextmenu", function(e) {
+  e.preventDefault();
+}, false);
+
+// Listen for mousedown
+window.addEventListener("mousedown", function(e) {
+  handle(e, true);
+}, false);
+
+// Listen for mouseup
+window.addEventListener("mouseup", function(e) {
+  handle(e, false);
+}, false);
+
+// Our main handler
+function handle(e, down) {
+  var id;
+  switch (e.button) {
+    case 0: // Primary button ("left")
+      id = "primary-status";
+      break;
+    case 2: // Secondary button ("right")
+      id = "secondary-status";
+      break;
+  }
+  if (id) {
+    document.getElementById(id).innerHTML = down ? "Down" : "Up";
+  }
+}
+
+shiftKey: Shift
+altKey: Alt (or Opt for Mac)
+ctrlKey: Ctrl
+metaKey: Cmd for Mac
+
+Before...
+<b ondblclick="alert('Click!')" onmousedown="return false">
+  Double-click me
+</b>
+...After
+
+*/
+
+
+
+
+/*  */

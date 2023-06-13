@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<head>
+    <meta charset="UTF_8">
+    <title>My first page</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+    <body>
+        <p>Some txt</p>
+
+        <form action="index.html">
+            <input type='button' name="yes" value='true' >
+            <br><input type='date' name="date" value="window.date">
+            <br><input type='time' name="time" value="window.time">
+            <br><input type='radio' name="radio" value='true'>
+        </form>
+
+        <script type="module">
+            import { main } from "./main.js"
+            main();
+        </script>
+        
+        <div>
+            <canvas id="glCanvas" width="1000" height="1000"></canvas>
+        </div>
+        <p>AAAAAAAAAAAAAAA</p>
+    </body>
+</html> 

@@ -1,0 +1,12 @@
+body {
+    background-color: #000;
+}
+
+p {
+    font-family: Pixelicious, 'Courier New', Courier, monospace;
+    font-size: 1.5em;
+    text-transform: uppercase;
+    color: #fff200;
+    filter: blur(0px);
+    animation: 2s ease-in-out infinite alternate puls;
+}
